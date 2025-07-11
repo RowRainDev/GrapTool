@@ -1,0 +1,36 @@
+#    ██████╗ ██╗   ██╗    ██████╗  ██████╗ ██╗    ██╗██████╗  █████╗ ██╗███╗   ██╗
+#    ██╔══██╗╚██╗ ██╔╝    ██╔══██╗██╔═══██╗██║    ██║██╔══██╗██╔══██╗██║████╗  ██║
+#    ██████╔╝ ╚████╔╝     ██████╔╝██║   ██║██║ █╗ ██║██████╔╝███████║██║██╔██╗ ██║
+#    ██╔══██╗  ╚██╔╝      ██╔══██╗██║   ██║██║███╗██║██╔══██╗██╔══██║██║██║╚██╗██║
+#    ██████╔╝   ██║       ██║  ██║╚██████╔╝╚███╔███╔╝██║  ██║██║  ██║██║██║ ╚████║
+#    ╚═════╝    ╚═╝       ╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝
+# discord.gg/raincloud - by rowrain
+# projeleri takip etmek için! https://discord.gg/e8KgFUjSr7
+# ve https://github.com/RowRainDev
+#
+#--------------- Glow Settings ---------------#
+glow-effect: true
+
+#--------------- Title Settings ---------------#
+title:
+  enabled: true
+  main-title: "&4&l{grapper} &r&4Tarafından Graplendin."
+  subtitle: "&c&lHaraket edemezsin."
+
+#--------------- GodMode Settings ---------------#
+god-mode: true
+
+#--------------- distance Settings ---------------#
+distance:
+  default: 3.0
+  minimum: 1.0
+  maximum: 10.0
+  step: 0.5
+
+#--------------- Sound Effects Settings ---------------#
+grapple-sound: true
+sounds:
+  grapple-start: "ENTITY_ENDER_DRAGON_FLAP"
+  grapple-update: "BLOCK_PISTON_EXTEND"
+  volume: 0.3
+  pitch: 1.6
