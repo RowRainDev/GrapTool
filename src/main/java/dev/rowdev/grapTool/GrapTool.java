@@ -1,4 +1,4 @@
-package dev.rowdev.graptool;
+package dev.rowdev.grapTool;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -8,6 +8,10 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabExecutor;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Creature;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -15,1052 +19,553 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
+import org.bukkit.util.Vector;
+
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
 
-    private GrappleConfig config;
-    private GrappleManager grappleManager;
-    private CommandHandler commandHandler;
-    private EventController eventController;
-    private TaskManager taskManager;
-    private PlayerStateManager playerStateManager;
-
-    @Override
-    public void onEnable() {
-        initializeComponents();
-        registerEvents();
-        registerCommands();
-        startTasks();
-        
-        getLogger().info("GrapTool enabled successfully");
-    }
-
-    @Override
-    public void onDisable() {
-        if (taskManager != null) {
-            taskManager.shutdown();
-        }
-        if (grappleManager != null) {
-            grappleManager.cleanup();
-        }
-        getLogger().info("GrapTool disabled successfully");
-    }
-
-    @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        return commandHandler.handleCommand(sender, command, label, args);
-    }
-
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        return commandHandler.handleTabComplete(sender, command, alias, args);
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        eventController.handlePlayerQuit(event);
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onEntityDamage(EntityDamageEvent event) {
-        eventController.handleEntityDamage(event);
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
-        eventController.handleEntityDamageByEntity(event);
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
-        eventController.handlePlayerItemHeld(event);
-    }
-
-    private void initializeComponents() {
-        saveDefaultConfig();
-        config = new GrappleConfig(this);
-        grappleManager = new GrappleManager(this, config);
-        commandHandler = new CommandHandler(this, grappleManager);
-        eventController = new EventController(this, grappleManager, config);
-        taskManager = new TaskManager(this, grappleManager, config);
-        playerStateManager = new PlayerStateManager();
-    }
-
-    private void registerEvents() {
-        getServer().getPluginManager().registerEvents(this, this);
-    }
-
-    private void registerCommands() {
-        PluginCommand command = getCommand("grap");
-        if (command != null) {
-            command.setExecutor(this);
-            command.setTabCompleter(this);
-        }
-    }
-
-    private void startTasks() {
-        taskManager.startUpdateTask();
-        if (config.isTitleEnabled()) {
-            taskManager.startTitleTask();
-        }
-    }
-
-    public GrappleConfig getGrappleConfig() {
-        return config;
-    }
-
-    public GrappleManager getGrappleManager() {
-        return grappleManager;
-    }
-
-    public PlayerStateManager getPlayerStateManager() {
-        return playerStateManager;
-    }
-}
-
-class GrappleConfig {
-    
-    private final JavaPlugin plugin;
-    private double defaultDistance;
-    private double minDistance;
-    private double maxDistance;
-    private double distanceStep;
-    private boolean grappleSoundEnabled;
-    private boolean glowEffectEnabled;
-    private boolean titleEnabled;
-    private boolean godModeEnabled;
-    private String titleText;
-    private String subtitleText;
-    private Sound grappleStartSound;
-    private Sound grappleUpdateSound;
-    private float soundVolume;
-    private float soundPitch;
-
-    public GrappleConfig(JavaPlugin plugin) {
-        this.plugin = plugin;
-        loadConfiguration();
-    }
-
-    private void loadConfiguration() {
-        var config = plugin.getConfig();
-        
-        defaultDistance = config.getDouble("distance.default", 3.0);
-        minDistance = config.getDouble("distance.minimum", 1.0);
-        maxDistance = config.getDouble("distance.maximum", 10.0);
-        distanceStep = config.getDouble("distance.step", 0.5);
-        
-        grappleSoundEnabled = config.getBoolean("grapple-sound", true);
-        glowEffectEnabled = config.getBoolean("glow-effect", true);
-        titleEnabled = config.getBoolean("title.enabled", true);
-        godModeEnabled = config.getBoolean("god-mode", true);
-        
-        titleText = translateColors(config.getString("title.main-title", "&4&l{grapper} &r&4Tarafından Graplendin."));
-        subtitleText = translateColors(config.getString("title.subtitle", "&c&lHareket edemezsin."));
-        
-        loadSounds(config);
-        
-        soundVolume = (float) config.getDouble("sounds.volume", 0.3);
-        soundPitch = (float) config.getDouble("sounds.pitch", 1.6);
-    }
-
-    private void loadSounds(org.bukkit.configuration.file.FileConfiguration config) {
-        try {
-            grappleStartSound = Sound.valueOf(config.getString("sounds.grapple-start", "ENTITY_ENDER_DRAGON_FLAP"));
-            grappleUpdateSound = Sound.valueOf(config.getString("sounds.grapple-update", "BLOCK_PISTON_EXTEND"));
-        } catch (IllegalArgumentException e) {
-            plugin.getLogger().warning("Invalid sound name, using defaults");
-            grappleStartSound = Sound.ENTITY_ENDER_DRAGON_FLAP;
-            grappleUpdateSound = Sound.BLOCK_PISTON_EXTEND;
-        }
-    }
-
-    private String translateColors(String text) {
-        return ChatColor.translateAlternateColorCodes('&', text != null ? text : "");
-    }
-
-    public void reload() {
-        plugin.reloadConfig();
-        loadConfiguration();
-    }
-
-    public double getDefaultDistance() { return defaultDistance; }
-    public double getMinDistance() { return minDistance; }
-    public double getMaxDistance() { return maxDistance; }
-    public double getDistanceStep() { return distanceStep; }
-    public boolean isGrappleSoundEnabled() { return grappleSoundEnabled; }
-    public boolean isGlowEffectEnabled() { return glowEffectEnabled; }
-    public boolean isTitleEnabled() { return titleEnabled; }
-    public boolean isGodModeEnabled() { return godModeEnabled; }
-    public String getTitleText() { return titleText; }
-    public String getSubtitleText() { return subtitleText; }
-    public Sound getGrappleStartSound() { return grappleStartSound; }
-    public Sound getGrappleUpdateSound() { return grappleUpdateSound; }
-    public float getSoundVolume() { return soundVolume; }
-    public float getSoundPitch() { return soundPitch; }
-}
-
-class GrappleManager {
-    
-    private static final String PERMISSION_USE = "graptool.use";
+    private static final String PERMISSION_USE   = "graptool.use";
     private static final String PERMISSION_ADMIN = "graptool.admin";
-    
-    private final JavaPlugin plugin;
-    private final GrappleConfig config;
-    private final Set<UUID> enabledPlayers;
-    private final Map<UUID, GrappleSession> activeSessions;
-    private final Map<UUID, UUID> targetLookup;
-    private final GrappleEffectManager effectManager;
-    private final GrappleMovementHandler movementHandler;
-    private final MessageHandler messageHandler;
 
-    public GrappleManager(JavaPlugin plugin, GrappleConfig config) {
-        this.plugin = plugin;
-        this.config = config;
-        this.enabledPlayers = ConcurrentHashMap.newKeySet();
-        this.activeSessions = new ConcurrentHashMap<>();
-        this.targetLookup = new ConcurrentHashMap<>();
-        this.effectManager = new GrappleEffectManager(plugin, config);
-        this.movementHandler = new GrappleMovementHandler(plugin, config);
-        this.messageHandler = new MessageHandler();
-    }
-
-    public boolean isPlayerEnabled(UUID playerId) {
-        return enabledPlayers.contains(playerId);
-    }
-
-    public void enablePlayer(UUID playerId) {
-        enabledPlayers.add(playerId);
-    }
-
-    public void disablePlayer(UUID playerId) {
-        enabledPlayers.remove(playerId);
-        stopGrapple(playerId);
-    }
-
-    public boolean hasPermission(Player player, String permission) {
-        return player.hasPermission(permission);
-    }
-
-    public boolean startGrapple(Player player, org.bukkit.entity.LivingEntity target) {
-        if (!validateGrappleTarget(player, target)) {
-            return false;
-        }
-
-        UUID playerId = player.getUniqueId();
-        stopGrapple(playerId);
-
-        try {
-            GrappleSession session = new GrappleSession(target, config.getDefaultDistance(), player.getName());
-            activeSessions.put(playerId, session);
-            targetLookup.put(playerId, target.getUniqueId());
-
-            effectManager.applyGrappleEffects(target, session, player);
-            playSoundIfEnabled(player, config.getGrappleStartSound());
-
-            return true;
-        } catch (Exception e) {
-            plugin.getLogger().warning("Failed to start grapple: " + e.getMessage());
-            return false;
-        }
-    }
-
-    public void stopGrapple(UUID playerId) {
-        GrappleSession session = activeSessions.remove(playerId);
-        targetLookup.remove(playerId);
-        
-        if (session != null) {
-            effectManager.removeGrappleEffects(session);
-        }
-    }
-
-    public void updateGrapple(UUID playerId) {
-        Player player = Bukkit.getPlayer(playerId);
-        GrappleSession session = activeSessions.get(playerId);
-        
-        if (player == null || session == null || !session.isValid()) {
-            stopGrapple(playerId);
-            return;
-        }
-
-        movementHandler.updateTargetPosition(player, session);
-        effectManager.playUpdateSound(session);
-    }
-
-    public void adjustDistance(UUID playerId, boolean increase) {
-        GrappleSession session = activeSessions.get(playerId);
-        if (session != null) {
-            session.adjustDistance(increase, config.getDistanceStep(), config.getMinDistance(), config.getMaxDistance());
-        }
-    }
-
-    public void cleanup() {
-        activeSessions.values().forEach(effectManager::removeGrappleEffects);
-        activeSessions.clear();
-        targetLookup.clear();
-        enabledPlayers.clear();
-    }
-
-    public void cleanupPlayer(UUID playerId) {
-        disablePlayer(playerId);
-        cleanupPlayerAsTarget(playerId);
-    }
-
-    private void cleanupPlayerAsTarget(UUID targetId) {
-        UUID grapplerPlayerId = targetLookup.entrySet().stream()
-                .filter(entry -> entry.getValue().equals(targetId))
-                .map(Map.Entry::getKey)
-                .findFirst()
-                .orElse(null);
-
-        if (grapplerPlayerId != null) {
-            Player grappler = Bukkit.getPlayer(grapplerPlayerId);
-            if (grappler != null && grappler.isOnline()) {
-                stopGrapple(grapplerPlayerId);
-                messageHandler.sendActionBar(grappler, "§cHedef çıktı, grapple iptal.");
-            }
-        }
-    }
-
-    private boolean validateGrappleTarget(Player player, org.bukkit.entity.LivingEntity target) {
-        if (target == null || target.isDead() || !target.isValid()) {
-            return false;
-        }
-
-        if (target.equals(player)) {
-            return false;
-        }
-
-        double distance = player.getLocation().distance(target.getLocation());
-        if (distance > config.getMaxDistance() * 2) {
-            messageHandler.sendActionBar(player, "§cHedef çok uzak!");
-            return false;
-        }
-
-        if (target instanceof Player targetPlayer) {
-            if (player.isOp() && targetPlayer.isOp()) {
-                messageHandler.sendActionBar(player, "§cOP oyuncuları birbirini grapleyemez!");
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private void playSoundIfEnabled(Player player, Sound sound) {
-        if (config.isGrappleSoundEnabled()) {
-            player.getWorld().playSound(player.getLocation(), sound, config.getSoundVolume(), config.getSoundPitch());
-        }
-    }
-
-    public GrappleSession getSession(UUID playerId) {
-        return activeSessions.get(playerId);
-    }
-
-    public boolean isGrappleActive(UUID playerId) {
-        return activeSessions.containsKey(playerId);
-    }
-
-    public boolean isTargetBeingGrappled(org.bukkit.entity.LivingEntity target) {
-        return activeSessions.values().stream()
-                .anyMatch(session -> session.getTarget().equals(target));
-    }
-
-    public String getPermissionUse() {
-        return PERMISSION_USE;
-    }
-
-    public String getPermissionAdmin() {
-        return PERMISSION_ADMIN;
-    }
-
-    public MessageHandler getMessageHandler() {
-        return messageHandler;
-    }
-
-    public Collection<GrappleSession> getAllSessions() {
-        return activeSessions.values();
-    }
-}
-
-class GrappleSession {
-    
-    private final org.bukkit.entity.LivingEntity target;
-    private final String graplerName;
-    private final PlayerFlightState flightState;
-    private final EntityAIState aiState;
-    private double distance;
-    private long lastSoundTime;
-
-    public GrappleSession(org.bukkit.entity.LivingEntity target, double distance, String graplerName) {
-        this.target = target;
-        this.distance = distance;
-        this.graplerName = graplerName;
-        this.flightState = new PlayerFlightState();
-        this.aiState = new EntityAIState();
-        this.lastSoundTime = 0;
-        
-        initializeStates();
-    }
-
-    private void initializeStates() {
-        if (target instanceof Player player) {
-            flightState.saveState(player);
-            player.setAllowFlight(true);
-            player.setFlying(true);
-        }
-        
-        if (target instanceof org.bukkit.entity.Creature creature) {
-            aiState.saveState(creature);
-            creature.setTarget(null);
-        }
-    }
-
-    public void adjustDistance(boolean increase, double step, double minDistance, double maxDistance) {
-        if (increase) {
-            distance = Math.min(distance + step, maxDistance);
-        } else {
-            distance = Math.max(distance - step, minDistance);
-        }
-    }
-
-    public boolean shouldPlaySound() {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastSoundTime > 100) {
-            lastSoundTime = currentTime;
-            return true;
-        }
-        return false;
-    }
-
-    public boolean isValid() {
-        return target != null && !target.isDead() && target.isValid();
-    }
-
-    public void restoreStates() {
-        if (target instanceof Player player) {
-            flightState.restoreState(player);
-        }
-        
-        if (target instanceof org.bukkit.entity.Creature creature) {
-            aiState.restoreState(creature);
-        }
-    }
-
-    public org.bukkit.entity.LivingEntity getTarget() { return target; }
-    public String getGraplerName() { return graplerName; }
-    public double getDistance() { return distance; }
-}
-
-class PlayerFlightState {
-    private boolean originalFlightAllowed;
-
-    public void saveState(Player player) {
-        originalFlightAllowed = player.getAllowFlight();
-    }
-
-    public void restoreState(Player player) {
-        player.setAllowFlight(originalFlightAllowed);
-        if (!originalFlightAllowed) {
-            player.setFlying(false);
-        }
-    }
-}
-
-class EntityAIState {
-    private boolean originalAIEnabled;
-
-    public void saveState(org.bukkit.entity.Creature creature) {
-        originalAIEnabled = creature.hasAI();
-    }
-
-    public void restoreState(org.bukkit.entity.Creature creature) {
-        creature.setAI(originalAIEnabled);
-    }
-}
-
-class GrappleEffectManager {
-    
-    private final JavaPlugin plugin;
-    private final GrappleConfig config;
-    private final GlowEffectHandler glowHandler;
-    private final TitleEffectHandler titleHandler;
-
-    public GrappleEffectManager(JavaPlugin plugin, GrappleConfig config) {
-        this.plugin = plugin;
-        this.config = config;
-        this.glowHandler = new GlowEffectHandler(plugin, config);
-        this.titleHandler = new TitleEffectHandler(config);
-    }
-
-    public void applyGrappleEffects(org.bukkit.entity.LivingEntity target, GrappleSession session, Player grappler) {
-        if (config.isGlowEffectEnabled()) {
-            glowHandler.applyGlow(target);
-        }
-        
-        if (target instanceof Player targetPlayer && config.isTitleEnabled()) {
-            titleHandler.showTitle(targetPlayer, session.getGraplerName());
-            lookAtGrappler(targetPlayer, grappler);
-        }
-    }
-
-    public void removeGrappleEffects(GrappleSession session) {
-        org.bukkit.entity.LivingEntity target = session.getTarget();
-        
-        if (target == null || target.isDead() || !target.isValid()) {
-            return;
-        }
-
-        if (config.isGlowEffectEnabled()) {
-            glowHandler.removeGlow(target);
-        }
-        
-        if (target instanceof Player targetPlayer && config.isTitleEnabled()) {
-            titleHandler.clearTitle(targetPlayer);
-        }
-        
-        session.restoreStates();
-    }
-
-    public void playUpdateSound(GrappleSession session) {
-        if (config.isGrappleSoundEnabled() && session.shouldPlaySound()) {
-            org.bukkit.entity.Entity target = session.getTarget();
-            target.getWorld().playSound(
-                target.getLocation(),
-                config.getGrappleUpdateSound(),
-                config.getSoundVolume() * 0.3f,
-                config.getSoundPitch()
-            );
-        }
-    }
-
-    private void lookAtGrappler(Player target, Player grappler) {
-        Location targetLocation = target.getEyeLocation();
-        Location grapplerLocation = grappler.getEyeLocation();
-        
-        org.bukkit.util.Vector direction = grapplerLocation.toVector()
-                .subtract(targetLocation.toVector())
-                .normalize();
-        
-        targetLocation.setYaw((float) (Math.atan2(-direction.getX(), direction.getZ()) * 180.0 / Math.PI));
-        targetLocation.setPitch((float) (Math.asin(-direction.getY()) * 80.0 / Math.PI));
-        
-        target.teleport(targetLocation);
-    }
-}
-
-class GlowEffectHandler {
-    
     private static final String TEAM_NAME = "GrappleTeam";
-    private final JavaPlugin plugin;
-    private final GrappleConfig config;
-    private org.bukkit.scoreboard.Team grappleTeam;
 
-    public GlowEffectHandler(JavaPlugin plugin, GrappleConfig config) {
-        this.plugin = plugin;
-        this.config = config;
-        initializeTeam();
-    }
-
-    private void initializeTeam() {
-        if (!config.isGlowEffectEnabled()) return;
-        
-        try {
-            org.bukkit.scoreboard.Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
-            org.bukkit.scoreboard.Team existingTeam = scoreboard.getTeam(TEAM_NAME);
-            
-            if (existingTeam != null) {
-                existingTeam.unregister();
-            }
-            
-            grappleTeam = scoreboard.registerNewTeam(TEAM_NAME);
-            grappleTeam.setColor(ChatColor.RED);
-            grappleTeam.setOption(org.bukkit.scoreboard.Team.Option.COLLISION_RULE, 
-                                org.bukkit.scoreboard.Team.OptionStatus.FOR_OTHER_TEAMS);
-        } catch (Exception e) {
-            plugin.getLogger().warning("Failed to initialize glow team: " + e.getMessage());
-        }
-    }
-
-    public void applyGlow(org.bukkit.entity.LivingEntity entity) {
-        entity.setGlowing(true);
-        if (grappleTeam != null) {
-            grappleTeam.addEntry(getEntityEntry(entity));
-        }
-    }
-
-    public void removeGlow(org.bukkit.entity.LivingEntity entity) {
-        entity.setGlowing(false);
-        if (grappleTeam != null) {
-            grappleTeam.removeEntry(getEntityEntry(entity));
-        }
-    }
-
-    private String getEntityEntry(org.bukkit.entity.LivingEntity entity) {
-        return entity instanceof Player ? entity.getName() : entity.getUniqueId().toString();
-    }
-}
-
-class TitleEffectHandler {
-    
-    private static final int TITLE_FADE_IN = 10;
-    private static final int TITLE_STAY = 60;
-    private static final int TITLE_FADE_OUT = 10;
-    
-    private final GrappleConfig config;
-
-    public TitleEffectHandler(GrappleConfig config) {
-        this.config = config;
-    }
-
-    public void showTitle(Player player, String grapplerName) {
-        String title = config.getTitleText().replace("{grapper}", grapplerName);
-        player.sendTitle(title, config.getSubtitleText(), TITLE_FADE_IN, TITLE_STAY, TITLE_FADE_OUT);
-    }
-
-    public void clearTitle(Player player) {
-        player.sendTitle("", "", 0, 1, 0);
-    }
-}
-
-class GrappleMovementHandler {
-    
     private static final double PLAYER_HEIGHT_OFFSET = 1.0;
-    private static final double MIN_MOVE_DISTANCE_SQUARED = 0.04;
-    private static final double PLAYER_VELOCITY_FACTOR = 0.35;
+    private static final double MIN_MOVE_DISTANCE_SQ = 0.04; 
+    private static final double PLAYER_VELOCITY_FACTOR = 0.35; 
     private static final double PLAYER_MAX_VELOCITY = 1.5;
     private static final double PLAYER_MAX_VERTICAL_VELOCITY = 0.6;
+
     private static final double ENTITY_VELOCITY_FACTOR = 0.25;
     private static final double ENTITY_MAX_VELOCITY = 1.2;
     private static final double ENTITY_MAX_VERTICAL_VELOCITY = 0.4;
-    private static final double TELEPORT_THRESHOLD_PLAYER = 9.0;
-    private static final double TELEPORT_THRESHOLD_ENTITY = 6.0;
-    
-    private final JavaPlugin plugin;
-    private final GrappleConfig config;
 
-    public GrappleMovementHandler(JavaPlugin plugin, GrappleConfig config) {
-        this.plugin = plugin;
-        this.config = config;
+    private static final float SOUND_VOLUME_MULTIPLIER = 0.3f;
+    private static final long  SOUND_COOLDOWN_MS       = 100;
+
+    private static final int UPDATE_TASK_INTERVAL = 2;  
+    private static final int TITLE_UPDATE_INTERVAL = 40;
+    private static final int TITLE_FADE_IN  = 10;
+    private static final int TITLE_STAY     = 60;
+    private static final int TITLE_FADE_OUT = 10;
+
+    private final Set<UUID> grapEnabled                 = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, GrappleSession> activeMap   = new ConcurrentHashMap<>();
+    private final Map<UUID, UUID>          targetLookup = new ConcurrentHashMap<>();
+    private Team grappleTeam;
+
+    private double defaultDistance, minDistance, maxDistance, distanceStep;
+    private boolean grappleSoundEnabled, glowEffectEnabled;
+    private boolean titleEnabled, godModeEnabled;
+    private String  titleText, subtitleText;
+    private Sound   grappleStartSound, grappleUpdateSound;
+    private float   soundVolume, soundPitch;
+
+    private int updateTaskId = -1, titleTaskId = -1;
+
+    @Override public void onEnable() {
+        showBanner();
+        saveDefaultConfig();
+        loadConfig();
+
+        Bukkit.getPluginManager().registerEvents(this, this);
+        PluginCommand cmd = getCommand("grap");
+        if (cmd != null) cmd.setExecutor(this);
+
+        if (glowEffectEnabled) setupGrappleTeam();
+        startGrappleUpdateTask();
+        if (titleEnabled) startTitleUpdateTask();
+
+        getLogger().info("GrapTool enabled ✓");
     }
 
-    public void updateTargetPosition(Player grappler, GrappleSession session) {
-        org.bukkit.entity.LivingEntity target = session.getTarget();
-        Location desiredPosition = calculateDesiredPosition(grappler, session.getDistance());
-        
-        if (target instanceof Player targetPlayer) {
-            movePlayer(targetPlayer, desiredPosition);
-        } else {
-            moveEntity(target, desiredPosition);
-        }
+    @Override public void onDisable() {
+        if (updateTaskId != -1) Bukkit.getScheduler().cancelTask(updateTaskId);
+        if (titleTaskId  != -1) Bukkit.getScheduler().cancelTask(titleTaskId);
+        cleanupAllSessions();
+        getLogger().info("GrapTool disabled ✓");
     }
 
-    private Location calculateDesiredPosition(Player grappler, double distance) {
-        Location base = grappler.getLocation().clone();
-        base.setY(base.getY() + PLAYER_HEIGHT_OFFSET);
-        
-        org.bukkit.util.Vector direction = grappler.getEyeLocation().getDirection().normalize();
-        return base.add(direction.multiply(distance));
-    }
 
-    private void movePlayer(Player target, Location desiredPosition) {
-        org.bukkit.util.Vector delta = desiredPosition.toVector().subtract(target.getLocation().toVector());
-        
-        if (delta.lengthSquared() < MIN_MOVE_DISTANCE_SQUARED) {
-            return;
-        }
+    @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
+        if (!(s instanceof Player p)) { s.sendMessage("§cSadece oyuncu."); return true; }
 
-        target.setFallDistance(0);
-
-        if (delta.lengthSquared() > TELEPORT_THRESHOLD_PLAYER) {
-            target.teleport(desiredPosition);
-        } else {
-            org.bukkit.util.Vector velocity = calculatePlayerVelocity(delta);
-            target.setVelocity(velocity);
-        }
-    }
-
-    private void moveEntity(org.bukkit.entity.LivingEntity target, Location desiredPosition) {
-        org.bukkit.util.Vector delta = desiredPosition.toVector().subtract(target.getLocation().toVector());
-        
-        if (delta.lengthSquared() < MIN_MOVE_DISTANCE_SQUARED) {
-            return;
-        }
-
-        target.setFallDistance(0);
-
-        if (delta.lengthSquared() > TELEPORT_THRESHOLD_ENTITY) {
-            Location teleportLocation = desiredPosition.clone();
-            teleportLocation.setYaw(target.getLocation().getYaw());
-            teleportLocation.setPitch(target.getLocation().getPitch());
-            target.teleport(teleportLocation);
-        } else {
-            org.bukkit.util.Vector velocity = calculateEntityVelocity(delta);
-            target.setVelocity(velocity);
-            
-            scheduleEntityCorrection(target, desiredPosition);
-        }
-    }
-
-    private org.bukkit.util.Vector calculatePlayerVelocity(org.bukkit.util.Vector delta) {
-        org.bukkit.util.Vector velocity = delta.multiply(PLAYER_VELOCITY_FACTOR);
-        
-        if (velocity.length() > PLAYER_MAX_VELOCITY) {
-            velocity = velocity.normalize().multiply(PLAYER_MAX_VELOCITY);
-        }
-        
-        velocity.setY(Math.max(Math.min(velocity.getY(), PLAYER_MAX_VERTICAL_VELOCITY), -PLAYER_MAX_VERTICAL_VELOCITY));
-        return velocity;
-    }
-
-    private org.bukkit.util.Vector calculateEntityVelocity(org.bukkit.util.Vector delta) {
-        org.bukkit.util.Vector velocity = delta.multiply(ENTITY_VELOCITY_FACTOR * 1.5);
-        
-        if (velocity.length() > ENTITY_MAX_VELOCITY) {
-            velocity = velocity.normalize().multiply(ENTITY_MAX_VELOCITY);
-        }
-        
-        velocity.setY(Math.max(Math.min(velocity.getY(), ENTITY_MAX_VERTICAL_VELOCITY * 1.5), -ENTITY_MAX_VERTICAL_VELOCITY * 1.5));
-        return velocity;
-    }
-
-    private void scheduleEntityCorrection(org.bukkit.entity.LivingEntity target, Location desiredPosition) {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (target.isValid() && !target.isDead()) {
-                    double currentDistance = target.getLocation().distance(desiredPosition);
-                    if (currentDistance > 1.0) {
-                        Location correctionLocation = desiredPosition.clone();
-                        correctionLocation.setYaw(target.getLocation().getYaw());
-                        correctionLocation.setPitch(target.getLocation().getPitch());
-                        target.teleport(correctionLocation);
-                    }
+        if (a.length == 1) {
+            String arg = a[0].toLowerCase();
+            switch (arg) {
+                case "on" -> {
+                    if (!p.hasPermission(PERMISSION_USE)) return noPerm(p);
+                    grapEnabled.add(p.getUniqueId());
+                    bar(p, "§aGrapple modu açıldı.");
                 }
+                case "off" -> {
+                    if (!p.hasPermission(PERMISSION_USE)) return noPerm(p);
+                    stopGrapple(p);
+                    grapEnabled.remove(p.getUniqueId());
+                    bar(p, "§cGrapple modu kapatıldı.");
+                }
+                case "reload" -> {
+                    if (!p.hasPermission(PERMISSION_ADMIN)) return noPerm(p);
+                    reloadConfig(); loadConfig();
+                    bar(p, "§aConfig yenilendi.");
+                }
+                default -> bar(p, "§cKullanım: /grap <on|off|reload>");
             }
-        }.runTaskLater(plugin, 5L);
-    }
-}
-
-class CommandHandler {
-    
-    private final JavaPlugin plugin;
-    private final GrappleManager grappleManager;
-    private final MessageHandler messageHandler;
-
-    public CommandHandler(JavaPlugin plugin, GrappleManager grappleManager) {
-        this.plugin = plugin;
-        this.grappleManager = grappleManager;
-        this.messageHandler = grappleManager.getMessageHandler();
-    }
-
-    public boolean handleCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage("§cSadece oyuncu.");
             return true;
         }
 
-        if (args.length != 1) {
-            messageHandler.sendActionBar(player, "§cKullanım: /grap <on|off|reload>");
-            return true;
-        }
-
-        String action = args[0].toLowerCase();
-        
-        switch (action) {
-            case "on" -> handleEnableCommand(player);
-            case "off" -> handleDisableCommand(player);
-            case "reload" -> handleReloadCommand(player);
-            default -> messageHandler.sendActionBar(player, "§cKullanım: /grap <on|off|reload>");
-        }
-        
+        bar((Player) s, "§cKullanım: /grap <on|off|reload>");
         return true;
     }
 
-    public List<String> handleTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length != 1) {
-            return List.of();
-        }
-
-        String input = args[0].toLowerCase();
-        List<String> completions = new ArrayList<>();
-        
-        if ("on".startsWith(input)) completions.add("on");
-        if ("off".startsWith(input)) completions.add("off");
-        if (sender.hasPermission(grappleManager.getPermissionAdmin()) && "reload".startsWith(input)) {
-            completions.add("reload");
-        }
-        
-        return completions;
+    @Override public List<String> onTabComplete(CommandSender s, Command c, String a, String[] args) {
+        if (args.length != 1) return List.of();
+        String in = args[0].toLowerCase();
+        List<String> list = new ArrayList<>();
+        if ("on".startsWith(in))  list.add("on");
+        if ("off".startsWith(in)) list.add("off");
+        if (s.hasPermission(PERMISSION_ADMIN) && "reload".startsWith(in)) list.add("reload");
+        return list;
     }
 
-    private void handleEnableCommand(Player player) {
-        if (!grappleManager.hasPermission(player, grappleManager.getPermissionUse())) {
-            messageHandler.sendNoPermission(player);
-            return;
-        }
-        
-        grappleManager.enablePlayer(player.getUniqueId());
-        messageHandler.sendActionBar(player, "§aGrapple modu açıldı.");
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onQuit(PlayerQuitEvent e) {
+        UUID id = e.getPlayer().getUniqueId();
+        cleanupPlayerSession(id);
+        cleanupPlayerAsTarget(id);
     }
 
-    private void handleDisableCommand(Player player) {
-        if (!grappleManager.hasPermission(player, grappleManager.getPermissionUse())) {
-            messageHandler.sendNoPermission(player);
-            return;
-        }
-        
-        grappleManager.disablePlayer(player.getUniqueId());
-        messageHandler.sendActionBar(player, "§cGrapple modu kapatıldı.");
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onDamage(EntityDamageEvent e) {
+        if (!godModeEnabled || !(e.getEntity() instanceof Player p)) return;
+        activeMap.values().stream()
+                .filter(ses -> ses.target.equals(p))
+                .findFirst().ifPresent(ses -> e.setCancelled(true));
     }
 
-    private void handleReloadCommand(Player player) {
-        if (!grappleManager.hasPermission(player, grappleManager.getPermissionAdmin())) {
-            messageHandler.sendNoPermission(player);
-            return;
-        }
-        
-        plugin.reloadConfig();
-        ((GrapTool) plugin).getGrappleConfig().reload();
-        messageHandler.sendActionBar(player, "§aConfig yenilendi.");
-    }
-}
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onDamageBy(EntityDamageByEntityEvent e) {
+        if (!(e.getDamager() instanceof Player p)) return;
+        if (!(e.getEntity() instanceof LivingEntity tgt)) return;
+        if (tgt.equals(p)) return;
 
-class EventController {
-    
-    private final JavaPlugin plugin;
-    private final GrappleManager grappleManager;
-    private final GrappleConfig config;
-    private final MessageHandler messageHandler;
-
-    public EventController(JavaPlugin plugin, GrappleManager grappleManager, GrappleConfig config) {
-        this.plugin = plugin;
-        this.grappleManager = grappleManager;
-        this.config = config;
-        this.messageHandler = grappleManager.getMessageHandler();
-    }
-
-    public void handlePlayerQuit(PlayerQuitEvent event) {
-        grappleManager.cleanupPlayer(event.getPlayer().getUniqueId());
-    }
-
-    public void handleEntityDamage(EntityDamageEvent event) {
-        if (!config.isGodModeEnabled() || !(event.getEntity() instanceof Player player)) {
+        if (!grapEnabled.contains(p.getUniqueId()) || !p.hasPermission(PERMISSION_USE)) return;
+        if (tgt instanceof Player tp && p.isOp() && tp.isOp()) {
+            bar(p, "§cOP oyuncuları birbirini grapleyemez!");
+            e.setCancelled(true);
             return;
         }
 
-        if (grappleManager.isTargetBeingGrappled(player)) {
-            event.setCancelled(true);
-        }
-    }
+        UUID pid = p.getUniqueId();
+        GrappleSession ses = activeMap.get(pid);
 
-    public void handleEntityDamageByEntity(EntityDamageByEntityEvent event) {
-        if (!(event.getDamager() instanceof Player player)) {
-            return;
-        }
-        
-        if (!(event.getEntity() instanceof org.bukkit.entity.LivingEntity target)) {
-            return;
-        }
-        
-        if (target.equals(player)) {
-            return;
-        }
-
-        if (!grappleManager.isPlayerEnabled(player.getUniqueId()) || 
-            !grappleManager.hasPermission(player, grappleManager.getPermissionUse())) {
-            return;
-        }
-
-        event.setCancelled(true);
-        handleGrappleInteraction(player, target);
-    }
-
-    public void handlePlayerItemHeld(PlayerItemHeldEvent event) {
-        Player player = event.getPlayer();
-        
-        if (!grappleManager.hasPermission(player, grappleManager.getPermissionUse())) {
-            return;
-        }
-
-        GrappleSession session = grappleManager.getSession(player.getUniqueId());
-        if (session == null) {
-            return;
-        }
-
-        boolean isScrollUp = isScrollingUp(event.getPreviousSlot(), event.getNewSlot());
-        boolean isScrollDown = isScrollingDown(event.getPreviousSlot(), event.getNewSlot());
-
-        if (isScrollUp || isScrollDown) {
-            grappleManager.adjustDistance(player.getUniqueId(), isScrollUp);
-            messageHandler.sendActionBar(player, "§eMesafe: " + String.format("%.1f", session.getDistance()));
-        }
-    }
-
-    private void handleGrappleInteraction(Player player, org.bukkit.entity.LivingEntity target) {
-        if (player.isSneaking()) {
-            handleSneakInteraction(player, target);
-            return;
-        }
-
-        if (grappleManager.isGrappleActive(player.getUniqueId())) {
-            grappleManager.stopGrapple(player.getUniqueId());
-            messageHandler.sendActionBar(player, "§cGrap bağlantısı kesildi.");
-            return;
-        }
-
-        if (grappleManager.startGrapple(player, target)) {
-            String targetName = getTargetName(target);
-            messageHandler.sendActionBar(player, "§aGrap bağlantısı kuruldu: " + targetName);
-        } else {
-            messageHandler.sendActionBar(player, "§cGrapple başlatılamadı.");
-        }
-    }
-
-    private void handleSneakInteraction(Player player, org.bukkit.entity.LivingEntity target) {
-        GrappleSession session = grappleManager.getSession(player.getUniqueId());
-        
-        if (session != null && session.getTarget().equals(target)) {
-            grappleManager.stopGrapple(player.getUniqueId());
-            messageHandler.sendActionBar(player, "§cShift + vurma ile bağlantı kesildi.");
-        }
-    }
-
-    private boolean isScrollingUp(int previousSlot, int newSlot) {
-        return (newSlot == previousSlot + 1) || (previousSlot == 8 && newSlot == 0);
-    }
-
-    private boolean isScrollingDown(int previousSlot, int newSlot) {
-        return (newSlot == previousSlot - 1) || (previousSlot == 0 && newSlot == 8);
-    }
-
-    private String getTargetName(org.bukkit.entity.LivingEntity target) {
-        return target instanceof Player ? ((Player) target).getName() : target.getType().name();
-    }
-}
-
-class TaskManager {
-    
-    private static final int UPDATE_TASK_INTERVAL = 2;
-    private static final int TITLE_UPDATE_INTERVAL = 40;
-    
-    private final JavaPlugin plugin;
-    private final GrappleManager grappleManager;
-    private final GrappleConfig config;
-    private int updateTaskId = -1;
-    private int titleTaskId = -1;
-
-    public TaskManager(JavaPlugin plugin, GrappleManager grappleManager, GrappleConfig config) {
-        this.plugin = plugin;
-        this.grappleManager = grappleManager;
-        this.config = config;
-    }
-
-    public void startUpdateTask() {
-        updateTaskId = new BukkitRunnable() {
-            @Override
-            public void run() {
-                grappleManager.getAllSessions().stream()
-                    .map(session -> Bukkit.getPlayer(getPlayerIdFromSession(session)))
-                    .filter(Objects::nonNull)
-                    .forEach(player -> grappleManager.updateGrapple(player.getUniqueId()));
+        if (p.isSneaking()) {
+            if (ses != null && ses.target.equals(tgt)) {
+                stopGrapple(p);
+                bar(p, "§cShift + vurma ile bağlantı kesildi.");
             }
-        }.runTaskTimer(plugin, 0L, UPDATE_TASK_INTERVAL).getTaskId();
+            e.setCancelled(true);
+            return;
+        }
+
+        if (ses != null && ses.target.equals(tgt)) {
+            stopGrapple(p);
+            bar(p, "§cGrap bağlantısı kesildi.");
+            e.setCancelled(true);
+            return;
+        }
+
+        if (startGrapple(p, tgt)) {
+            String entityName = tgt instanceof Player ? ((Player) tgt).getName() : tgt.getType().name();
+            bar(p, "§aGrap bağlantısı kuruldu: " + entityName);
+        } else {
+            bar(p, "§cGrapple başlatılamadı.");
+        }
+        e.setCancelled(true);
     }
 
-    public void startTitleTask() {
-        titleTaskId = new BukkitRunnable() {
-            @Override
-            public void run() {
-                grappleManager.getAllSessions().forEach(session -> {
-                    if (session.getTarget() instanceof Player targetPlayer && targetPlayer.isOnline()) {
-                        new TitleEffectHandler(config).showTitle(targetPlayer, session.getGraplerName());
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onScroll(PlayerItemHeldEvent e) {
+        Player p = e.getPlayer();
+        if (!p.hasPermission(PERMISSION_USE)) return;
+        GrappleSession ses = activeMap.get(p.getUniqueId());
+        if (ses == null) return;
+
+        int prev = e.getPreviousSlot(), now = e.getNewSlot();
+        boolean up   = (now == prev + 1) || (prev == 8 && now == 0);
+        boolean down = (now == prev - 1) || (prev == 0 && now == 8);
+
+        if (up || down) {
+            double d = ses.distance;
+            d = up ? Math.min(d + distanceStep, maxDistance)
+                    : Math.max(d - distanceStep, minDistance);
+            ses.distance = d;
+            bar(p, "§eMesafe: " + String.format("%.1f", d));
+        }
+    }
+
+
+    private boolean startGrapple(Player p, LivingEntity tgt) {
+        if (tgt == null || tgt.isDead() || !tgt.isValid()) {
+            getLogger().info("Hedef geçersiz: " + (tgt == null ? "null" : tgt.getType()));
+            return false;
+        }
+
+        double distance = p.getLocation().distance(tgt.getLocation());
+        if (distance > maxDistance * 2) {
+            bar(p, "§cHedef çok uzak!");
+            return false;
+        }
+
+        UUID pid = p.getUniqueId();
+        GrappleSession old = activeMap.remove(pid);
+        if (old != null) cleanupSession(old);
+
+        try {
+            GrappleSession ses = new GrappleSession(tgt, defaultDistance, p.getName());
+            activeMap.put(pid, ses);
+            targetLookup.put(pid, tgt.getUniqueId());
+
+            if (glowEffectEnabled) applyGlow(tgt);
+
+            if (tgt instanceof Player tp) {
+                setupTargetPlayer(tp, ses, p);
+            } else {
+                setupTargetEntity(tgt, ses);
+            }
+
+            if (grappleSoundEnabled)
+                p.getWorld().playSound(p.getLocation(), grappleStartSound, soundVolume, soundPitch);
+
+            getLogger().info("Grapple başarılı: " + p.getName() + " -> " + tgt.getType());
+            return true;
+        } catch (Exception ex) {
+            getLogger().warning("Grapple başlatılamadı: " + ex.getMessage());
+            ex.printStackTrace();
+            return false;
+        }
+    }
+
+    private void stopGrapple(Player p) {
+        GrappleSession ses = activeMap.remove(p.getUniqueId());
+        targetLookup.remove(p.getUniqueId());
+        if (ses != null) cleanupSession(ses);
+    }
+
+    private void startGrappleUpdateTask() {
+        updateTaskId = new BukkitRunnable() {
+            @Override public void run() {
+                for (Iterator<Map.Entry<UUID,GrappleSession>> it = activeMap.entrySet().iterator(); it.hasNext();) {
+                    Map.Entry<UUID,GrappleSession> ent = it.next();
+                    Player p = Bukkit.getPlayer(ent.getKey());
+                    GrappleSession ses = ent.getValue();
+                    LivingEntity tgt = ses.target;
+
+                    if (p == null || !p.isOnline() || tgt == null || tgt.isDead() || !tgt.isValid()) {
+                        cleanupSession(ses); it.remove(); continue;
                     }
+                    updateGrappleTarget(p, ses);
+                }
+            }
+        }.runTaskTimer(this, 0L, UPDATE_TASK_INTERVAL).getTaskId();
+    }
+
+    private void startTitleUpdateTask() {
+        titleTaskId = new BukkitRunnable() {
+            @Override public void run() {
+                activeMap.values().forEach(ses -> {
+                    if (ses.target instanceof Player tp && tp.isOnline())
+                        showTitle(tp, ses.graplerName);
                 });
             }
-        }.runTaskTimer(plugin, 0L, TITLE_UPDATE_INTERVAL).getTaskId();
+        }.runTaskTimer(this, 0L, TITLE_UPDATE_INTERVAL).getTaskId();
     }
 
-    public void shutdown() {
-        if (updateTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(updateTaskId);
+    private void updateGrappleTarget(Player p, GrappleSession ses) {
+        LivingEntity tgt = ses.target;
+
+        Location base = p.getLocation().clone();
+        base.setY(base.getY() + PLAYER_HEIGHT_OFFSET);
+
+        Vector dir = p.getEyeLocation().getDirection().normalize();
+        Location desired = base.add(dir.multiply(ses.distance));
+
+        if (tgt instanceof Player) {
+            moveTargetPlayer((Player) tgt, desired);
+        } else {
+            moveTargetEntity(tgt, desired);
         }
-        if (titleTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(titleTaskId);
+
+        playUpdateSound(tgt, ses);
+    }
+
+    private void moveTargetPlayer(Player tgt, Location desired) {
+        Vector delta = desired.toVector().subtract(tgt.getLocation().toVector());
+        if (delta.lengthSquared() < MIN_MOVE_DISTANCE_SQ) return;
+
+        Vector vel = delta.multiply(PLAYER_VELOCITY_FACTOR);
+        if (vel.length() > PLAYER_MAX_VELOCITY) {
+            vel = vel.normalize().multiply(PLAYER_MAX_VELOCITY);
+        }
+
+        vel.setY(Math.max(Math.min(vel.getY(), PLAYER_MAX_VERTICAL_VELOCITY), -PLAYER_MAX_VERTICAL_VELOCITY));
+
+        tgt.setFallDistance(0);
+
+        if (delta.lengthSquared() > 9.0) { 
+            tgt.teleport(desired);
+        } else {
+            tgt.setVelocity(vel);
+        }
+
+        tgt.setFallDistance(0);
+    }
+
+    private void moveTargetEntity(LivingEntity tgt, Location desired) {
+        Vector delta = desired.toVector().subtract(tgt.getLocation().toVector());
+
+        if (delta.lengthSquared() < MIN_MOVE_DISTANCE_SQ) return;
+        Vector vel = delta.multiply(ENTITY_VELOCITY_FACTOR * 1.5); 
+
+        if (vel.length() > ENTITY_MAX_VELOCITY) {
+            vel = vel.normalize().multiply(ENTITY_MAX_VELOCITY);
+        }
+
+        vel.setY(Math.max(Math.min(vel.getY(), ENTITY_MAX_VERTICAL_VELOCITY * 1.5), -ENTITY_MAX_VERTICAL_VELOCITY * 1.5));
+
+        tgt.setFallDistance(0);
+        if (delta.lengthSquared() > 6.0) { 
+            Location teleportLoc = desired.clone();
+            teleportLoc.setYaw(tgt.getLocation().getYaw());
+            teleportLoc.setPitch(tgt.getLocation().getPitch());
+            tgt.teleport(teleportLoc);
+        } else {
+            tgt.setVelocity(vel);
+
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (tgt.isValid() && !tgt.isDead()) {
+                        double currentDistance = tgt.getLocation().distance(desired);
+                        if (currentDistance > 1.0) {
+                            Location teleportLoc = desired.clone();
+                            teleportLoc.setYaw(tgt.getLocation().getYaw());
+                            teleportLoc.setPitch(tgt.getLocation().getPitch());
+                            tgt.teleport(teleportLoc);
+                        }
+                    }
+                }
+            }.runTaskLater(this, 5L); 
         }
     }
 
-    private UUID getPlayerIdFromSession(GrappleSession session) {
-        return grappleManager.getAllSessions().stream()
-            .filter(s -> s.equals(session))
-            .findFirst()
-            .map(s -> UUID.randomUUID())
-            .orElse(null);
+    private void playUpdateSound(Entity e, GrappleSession ses) {
+        if (!grappleSoundEnabled || !ses.shouldPlaySound()) return;
+        e.getWorld().playSound(e.getLocation(), grappleUpdateSound,
+                soundVolume * SOUND_VOLUME_MULTIPLIER, soundPitch);
     }
-}
 
-class MessageHandler {
-    
-    public void sendActionBar(Player player, String message) {
+    private void showTitle(Player tgt, String grapler) {
+        String title = titleText.replace("{grapper}", grapler);
+        tgt.sendTitle(title, subtitleText, TITLE_FADE_IN, TITLE_STAY, TITLE_FADE_OUT);
+    }
+
+    private void clearTitle(Player tgt) { tgt.sendTitle("", "", 0, 1, 0); }
+
+    private void applyGlow(LivingEntity e) {
+        e.setGlowing(true);
+        if (grappleTeam != null) grappleTeam.addEntry(getEntry(e));
+    }
+
+    private void removeGlow(LivingEntity e) {
+        e.setGlowing(false);
+        if (grappleTeam != null) grappleTeam.removeEntry(getEntry(e));
+    }
+
+    private String getEntry(LivingEntity e) {
+        return e instanceof Player ? e.getName() : e.getUniqueId().toString();
+    }
+
+    private void setupTargetPlayer(Player tp, GrappleSession ses, Player grapler) {
+        if (titleEnabled) showTitle(tp, grapler.getName());
+        ses.originalFly = tp.getAllowFlight();
+        tp.setAllowFlight(true);
+        tp.setFlying(true); 
+        lookAt(tp, grapler);
+    }
+
+    private void setupTargetEntity(LivingEntity entity, GrappleSession ses) {
+        if (entity instanceof Creature creature) {
+            ses.originalAI = creature.hasAI();
+            creature.setTarget(null);
+        }
+
+    }
+
+    private void cleanupTargetPlayer(Player tp, GrappleSession ses) {
+        if (titleEnabled) clearTitle(tp);
+        tp.setAllowFlight(ses.originalFly);
+        if (!ses.originalFly) tp.setFlying(false);
+    }
+
+    private void cleanupTargetEntity(LivingEntity entity, GrappleSession ses) {
+        if (entity instanceof Creature creature) {
+            creature.setAI(ses.originalAI);
+        }
+    }
+
+    private void cleanupSession(GrappleSession ses) {
+        LivingEntity t = ses.target;
+        if (t == null || t.isDead() || !t.isValid()) return;
+
+        if (glowEffectEnabled) removeGlow(t);
+
+        if (t instanceof Player tp) {
+            cleanupTargetPlayer(tp, ses);
+        } else {
+            cleanupTargetEntity(t, ses);
+        }
+    }
+
+    private void cleanupPlayerSession(UUID id) {
+        grapEnabled.remove(id);
+        GrappleSession ses = activeMap.remove(id);
+        targetLookup.remove(id);
+        if (ses != null) cleanupSession(ses);
+    }
+
+    private void cleanupPlayerAsTarget(UUID tgtId) {
+        UUID grappler = targetLookup.entrySet().stream()
+                .filter(e -> e.getValue().equals(tgtId))
+                .map(Map.Entry::getKey)
+                .findFirst().orElse(null);
+        if (grappler != null) {
+            Player p = Bukkit.getPlayer(grappler);
+            if (p != null && p.isOnline()) {
+                stopGrapple(p);
+                bar(p, "§cHedef çıktı, grapple iptal.");
+            }
+        }
+    }
+
+    private void cleanupAllSessions() {
+        activeMap.values().forEach(this::cleanupSession);
+        activeMap.clear(); targetLookup.clear(); grapEnabled.clear();
+    }
+
+    private void bar(Player p, String msg) {
+        try { p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(msg)); }
+        catch (Exception ex) { p.sendMessage(msg); }
+    }
+
+    private boolean noPerm(Player p) { bar(p, "§cYetkin yok."); return true; }
+
+    private void lookAt(Player tgt, Player src) {
+        Location tLoc = tgt.getEyeLocation(), sLoc = src.getEyeLocation();
+        Vector dir = sLoc.toVector().subtract(tLoc.toVector()).normalize();
+        tLoc.setYaw((float) (Math.atan2(-dir.getX(), dir.getZ()) * 180.0 / Math.PI));
+        tLoc.setPitch((float) (Math.asin(-dir.getY()) * 80.0 / Math.PI));
+        tgt.teleport(tLoc);
+    }
+
+    private void setupGrappleTeam() {
         try {
-            player.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, 
-                                      new net.md_5.bungee.api.chat.TextComponent(message));
-        } catch (Exception e) {
-            player.sendMessage(message);
+            Scoreboard sb = Bukkit.getScoreboardManager().getMainScoreboard();
+            Team old = sb.getTeam(TEAM_NAME); if (old != null) old.unregister();
+            grappleTeam = sb.registerNewTeam(TEAM_NAME);
+            grappleTeam.setColor(ChatColor.RED);
+            grappleTeam.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.FOR_OTHER_TEAMS);
+        } catch (Exception ex) {
+            getLogger().warning("Glow takımı kurulamadı: " + ex.getMessage());
+            glowEffectEnabled = false;
         }
     }
 
-    public void sendNoPermission(Player player) {
-        sendActionBar(player, "§cYetkin yok.");
-    }
+    private void loadConfig() {
+        FileConfiguration cfg = getConfig();
 
-    public void sendMessage(Player player, String message) {
-        player.sendMessage(message);
-    }
-}
+        defaultDistance  = cfg.getDouble("distance.default", 3.0);
+        minDistance      = cfg.getDouble("distance.minimum", 1.0);
+        maxDistance      = cfg.getDouble("distance.maximum", 10.0);
+        distanceStep     = cfg.getDouble("distance.step", 0.5);
 
-class PlayerStateManager {
-    
-    private final Map<UUID, PlayerState> playerStates = new ConcurrentHashMap<>();
+        grappleSoundEnabled = cfg.getBoolean("grapple-sound", true);
+        glowEffectEnabled   = cfg.getBoolean("glow-effect",   true);
 
-    public void savePlayerState(Player player) {
-        playerStates.put(player.getUniqueId(), new PlayerState(player));
-    }
+        titleEnabled  = cfg.getBoolean("title.enabled", true);
+        titleText     = cc(cfg.getString("title.main-title",
+                "&4&l{grapper} &r&4Tarafından Graplendin."));
+        subtitleText  = cc(cfg.getString("title.subtitle",
+                "&c&lHareket edemezsin."));
 
-    public void restorePlayerState(Player player) {
-        PlayerState state = playerStates.remove(player.getUniqueId());
-        if (state != null) {
-            state.restore(player);
-        }
-    }
+        godModeEnabled = cfg.getBoolean("god-mode", true);
 
-    public void clearPlayerState(UUID playerId) {
-        playerStates.remove(playerId);
-    }
-
-    private static class PlayerState {
-        private final boolean flyAllowed;
-        private final boolean flying;
-        private final double health;
-        private final int foodLevel;
-
-        public PlayerState(Player player) {
-            this.flyAllowed = player.getAllowFlight();
-            this.flying = player.isFlying();
-            this.health = player.getHealth();
-            this.foodLevel = player.getFoodLevel();
+        try {
+            grappleStartSound  = Sound.valueOf(cfg.getString("sounds.grapple-start",
+                    "ENTITY_ENDER_DRAGON_FLAP"));
+            grappleUpdateSound = Sound.valueOf(cfg.getString("sounds.grapple-update",
+                    "BLOCK_PISTON_EXTEND"));
+        } catch (IllegalArgumentException ex) {
+            getLogger().warning("Ses ismi hatalı, varsayılanlar kullanılıyor.");
+            grappleStartSound  = Sound.ENTITY_ENDER_DRAGON_FLAP;
+            grappleUpdateSound = Sound.BLOCK_PISTON_EXTEND;
         }
 
-        public void restore(Player player) {
-            player.setAllowFlight(flyAllowed);
-            player.setFlying(flying);
-            player.setHealth(health);
-            player.setFoodLevel(foodLevel);
+        soundVolume = (float) cfg.getDouble("sounds.volume", 0.3);
+        soundPitch  = (float) cfg.getDouble("sounds.pitch",  1.6);
+    }
+
+    private String cc(String s) { return ChatColor.translateAlternateColorCodes('&', s == null ? "" : s); }
+
+    private void showBanner() {
+        String[] lines = {
+                "§d   ██████╗ ██╗   ██╗    ██████╗  ██████╗ ██╗    ██╗██████╗  █████╗ ██╗███╗   ██╗",
+                "§d   ██╔══██╗╚██╗ ██╔╝    ██╔══██╗██╔═══██╗██║    ██║██╔══██╗██╔══██╗██║████╗  ██║",
+                "§d   ██████╔╝ ╚████╔╝     ██████╔╝██║   ██║██║ █╗ ██║██████╔╝███████║██║██╔██╗ ██║",
+                "§d   ██╔══██╗  ╚██╔╝      ██╔══██╗██║   ██║██║███╗██║██╔══██╗██╔══██║██║██║╚██╗██║",
+                "§d   ██████╔╝   ██║       ██║  ██║╚██████╔╝╚███╔███╔╝██║  ██║██║  ██║██║██║ ╚████║",
+                "§d   ╚═════╝    ╚═╝       ╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝",
+                "",
+                "§dby rowrain - discord.gg/raincloud",
+                ""
+        };
+        Arrays.stream(lines).forEach(l -> getLogger().info(ChatColor.stripColor(l)));
+    }
+
+    private static class GrappleSession {
+        final LivingEntity target;
+        final String graplerName;
+        double distance;
+        long lastSound;
+        boolean originalFly;
+        boolean originalAI;
+        
+        GrappleSession(LivingEntity tgt, double dist, String name) {
+            target = tgt;
+            distance = dist;
+            graplerName = name;
+            originalFly = false;
+            originalAI = true;
+        }
+
+        boolean shouldPlaySound() {
+            long now = System.currentTimeMillis();
+            if (now - lastSound > SOUND_COOLDOWN_MS) {
+                lastSound = now;
+                return true;
+            }
+            return false;
         }
     }
 }
