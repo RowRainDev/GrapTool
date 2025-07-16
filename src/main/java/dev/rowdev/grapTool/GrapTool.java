@@ -41,8 +41,8 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
     private static final String TEAM_NAME = "GrappleTeam";
 
     private static final double PLAYER_HEIGHT_OFFSET = 1.0;
-    private static final double MIN_MOVE_DISTANCE_SQ = 0.04; 
-    private static final double PLAYER_VELOCITY_FACTOR = 0.35; 
+    private static final double MIN_MOVE_DISTANCE_SQ = 0.04;
+    private static final double PLAYER_VELOCITY_FACTOR = 0.35;
     private static final double PLAYER_MAX_VELOCITY = 1.5;
     private static final double PLAYER_MAX_VERTICAL_VELOCITY = 0.6;
 
@@ -53,7 +53,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
     private static final float SOUND_VOLUME_MULTIPLIER = 0.3f;
     private static final long  SOUND_COOLDOWN_MS       = 100;
 
-    private static final int UPDATE_TASK_INTERVAL = 2;  
+    private static final int UPDATE_TASK_INTERVAL = 2;
     private static final int TITLE_UPDATE_INTERVAL = 40;
     private static final int TITLE_FADE_IN  = 10;
     private static final int TITLE_STAY     = 60;
@@ -169,15 +169,6 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
 
         UUID pid = p.getUniqueId();
         GrappleSession ses = activeMap.get(pid);
-
-        if (p.isSneaking()) {
-            if (ses != null && ses.target.equals(tgt)) {
-                stopGrapple(p);
-                bar(p, "§cShift + vurma ile bağlantı kesildi.");
-            }
-            e.setCancelled(true);
-            return;
-        }
 
         if (ses != null && ses.target.equals(tgt)) {
             stopGrapple(p);
@@ -323,7 +314,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
 
         tgt.setFallDistance(0);
 
-        if (delta.lengthSquared() > 9.0) { 
+        if (delta.lengthSquared() > 9.0) {
             tgt.teleport(desired);
         } else {
             tgt.setVelocity(vel);
@@ -336,7 +327,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
         Vector delta = desired.toVector().subtract(tgt.getLocation().toVector());
 
         if (delta.lengthSquared() < MIN_MOVE_DISTANCE_SQ) return;
-        Vector vel = delta.multiply(ENTITY_VELOCITY_FACTOR * 1.5); 
+        Vector vel = delta.multiply(ENTITY_VELOCITY_FACTOR * 1.5);
 
         if (vel.length() > ENTITY_MAX_VELOCITY) {
             vel = vel.normalize().multiply(ENTITY_MAX_VELOCITY);
@@ -345,7 +336,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
         vel.setY(Math.max(Math.min(vel.getY(), ENTITY_MAX_VERTICAL_VELOCITY * 1.5), -ENTITY_MAX_VERTICAL_VELOCITY * 1.5));
 
         tgt.setFallDistance(0);
-        if (delta.lengthSquared() > 6.0) { 
+        if (delta.lengthSquared() > 6.0) {
             Location teleportLoc = desired.clone();
             teleportLoc.setYaw(tgt.getLocation().getYaw());
             teleportLoc.setPitch(tgt.getLocation().getPitch());
@@ -366,7 +357,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
                         }
                     }
                 }
-            }.runTaskLater(this, 5L); 
+            }.runTaskLater(this, 5L);
         }
     }
 
@@ -401,7 +392,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
         if (titleEnabled) showTitle(tp, grapler.getName());
         ses.originalFly = tp.getAllowFlight();
         tp.setAllowFlight(true);
-        tp.setFlying(true); 
+        tp.setFlying(true);
         lookAt(tp, grapler);
     }
 
@@ -550,7 +541,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
         long lastSound;
         boolean originalFly;
         boolean originalAI;
-        
+
         GrappleSession(LivingEntity tgt, double dist, String name) {
             target = tgt;
             distance = dist;
