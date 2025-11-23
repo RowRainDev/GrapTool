@@ -98,7 +98,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
 
 
     @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (!(s instanceof Player p)) { s.sendMessage("§cSadece oyuncu."); return true; }
+        if (!(s instanceof Player p)) { s.sendMessage("§cJust Player."); return true; }
 
         if (a.length == 1) {
             String arg = a[0].toLowerCase();
@@ -106,25 +106,25 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
                 case "on" -> {
                     if (!p.hasPermission(PERMISSION_USE)) return noPerm(p);
                     grapEnabled.add(p.getUniqueId());
-                    bar(p, "§aGrapple modu açıldı.");
+                    bar(p, "§aGrapple mode active.");
                 }
                 case "off" -> {
                     if (!p.hasPermission(PERMISSION_USE)) return noPerm(p);
                     stopGrapple(p);
                     grapEnabled.remove(p.getUniqueId());
-                    bar(p, "§cGrapple modu kapatıldı.");
+                    bar(p, "§cGrapple mode disable.");
                 }
                 case "reload" -> {
                     if (!p.hasPermission(PERMISSION_ADMIN)) return noPerm(p);
                     reloadConfig(); loadConfig();
-                    bar(p, "§aConfig yenilendi.");
+                    bar(p, "§aConfig renewed.");
                 }
-                default -> bar(p, "§cKullanım: /grap <on|off|reload>");
+                default -> bar(p, "§cUsage: /grap <on|off|reload>");
             }
             return true;
         }
 
-        bar((Player) s, "§cKullanım: /grap <on|off|reload>");
+        bar((Player) s, "§cUsage: /grap <on|off|reload>");
         return true;
     }
 
@@ -162,7 +162,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
 
         if (!grapEnabled.contains(p.getUniqueId()) || !p.hasPermission(PERMISSION_USE)) return;
         if (tgt instanceof Player tp && p.isOp() && tp.isOp()) {
-            bar(p, "§cOP oyuncuları birbirini grapleyemez!");
+            bar(p, "§cOP players cannot grapple each other!");
             e.setCancelled(true);
             return;
         }
@@ -172,16 +172,16 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
 
         if (ses != null && ses.target.equals(tgt)) {
             stopGrapple(p);
-            bar(p, "§cGrap bağlantısı kesildi.");
+            bar(p, "§cGrap connection lost.");
             e.setCancelled(true);
             return;
         }
 
         if (startGrapple(p, tgt)) {
             String entityName = tgt instanceof Player ? ((Player) tgt).getName() : tgt.getType().name();
-            bar(p, "§aGrap bağlantısı kuruldu: " + entityName);
+            bar(p, "§aGrap The connection has been established. " + entityName);
         } else {
-            bar(p, "§cGrapple başlatılamadı.");
+            bar(p, "§cGrapple Could not be started.");
         }
         e.setCancelled(true);
     }
@@ -202,20 +202,20 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
             d = up ? Math.min(d + distanceStep, maxDistance)
                     : Math.max(d - distanceStep, minDistance);
             ses.distance = d;
-            bar(p, "§eMesafe: " + String.format("%.1f", d));
+            bar(p, "§eDistance: " + String.format("%.1f", d));
         }
     }
 
 
     private boolean startGrapple(Player p, LivingEntity tgt) {
         if (tgt == null || tgt.isDead() || !tgt.isValid()) {
-            getLogger().info("Hedef geçersiz: " + (tgt == null ? "null" : tgt.getType()));
+            getLogger().info("Target invalid: " + (tgt == null ? "null" : tgt.getType()));
             return false;
         }
 
         double distance = p.getLocation().distance(tgt.getLocation());
         if (distance > maxDistance * 2) {
-            bar(p, "§cHedef çok uzak!");
+            bar(p, "§cThe goal is very far away!");
             return false;
         }
 
@@ -239,10 +239,10 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
             if (grappleSoundEnabled)
                 p.getWorld().playSound(p.getLocation(), grappleStartSound, soundVolume, soundPitch);
 
-            getLogger().info("Grapple başarılı: " + p.getName() + " -> " + tgt.getType());
+            getLogger().info("Grapple successful: " + p.getName() + " -> " + tgt.getType());
             return true;
         } catch (Exception ex) {
-            getLogger().warning("Grapple başlatılamadı: " + ex.getMessage());
+            getLogger().warning("Grapple could not be started: " + ex.getMessage());
             ex.printStackTrace();
             return false;
         }
@@ -445,7 +445,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
             Player p = Bukkit.getPlayer(grappler);
             if (p != null && p.isOnline()) {
                 stopGrapple(p);
-                bar(p, "§cHedef çıktı, grapple iptal.");
+                bar(p, "§cTarget acquired, grapple canceled.");
             }
         }
     }
@@ -460,7 +460,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
         catch (Exception ex) { p.sendMessage(msg); }
     }
 
-    private boolean noPerm(Player p) { bar(p, "§cYetkin yok."); return true; }
+    private boolean noPerm(Player p) { bar(p, "§cNo authority."); return true; }
 
     private void lookAt(Player tgt, Player src) {
         Location tLoc = tgt.getEyeLocation(), sLoc = src.getEyeLocation();
@@ -478,7 +478,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
             grappleTeam.setColor(ChatColor.RED);
             grappleTeam.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.FOR_OTHER_TEAMS);
         } catch (Exception ex) {
-            getLogger().warning("Glow takımı kurulamadı: " + ex.getMessage());
+            getLogger().warning("The Glow team could not be formed: " + ex.getMessage());
             glowEffectEnabled = false;
         }
     }
@@ -496,9 +496,9 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
 
         titleEnabled  = cfg.getBoolean("title.enabled", true);
         titleText     = cc(cfg.getString("title.main-title",
-                "&4&l{grapper} &r&4Tarafından Graplendin."));
+                "&4&l{grapper} &r&4By Grapped"));
         subtitleText  = cc(cfg.getString("title.subtitle",
-                "&c&lHareket edemezsin."));
+                "&c&lDont Move."));
 
         godModeEnabled = cfg.getBoolean("god-mode", true);
 
@@ -508,7 +508,7 @@ public class GrapTool extends JavaPlugin implements Listener, TabExecutor {
             grappleUpdateSound = Sound.valueOf(cfg.getString("sounds.grapple-update",
                     "BLOCK_PISTON_EXTEND"));
         } catch (IllegalArgumentException ex) {
-            getLogger().warning("Ses ismi hatalı, varsayılanlar kullanılıyor.");
+            getLogger().warning("The sound name is incorrect; defaults are being used.");
             grappleStartSound  = Sound.ENTITY_ENDER_DRAGON_FLAP;
             grappleUpdateSound = Sound.BLOCK_PISTON_EXTEND;
         }
