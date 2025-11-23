@@ -5,8 +5,8 @@
 #    ██████╔╝   ██║       ██║  ██║╚██████╔╝╚███╔███╔╝██║  ██║██║  ██║██║██║ ╚████║
 #    ╚═════╝    ╚═╝       ╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝
 # discord.gg/raincloud - by rowrain
-# projeleri takip etmek için! https://discord.gg/e8KgFUjSr7
-# ve https://github.com/RowRainDev
+# https://discord.gg/e8KgFUjSr7
+# and https://github.com/RowRainDev
 #
 #--------------- Glow Settings ---------------#
 glow-effect: true
@@ -14,8 +14,8 @@ glow-effect: true
 #--------------- Title Settings ---------------#
 title:
   enabled: true
-  main-title: "&4&l{grapper} &r&4Tarafından Graplendin."
-  subtitle: "&c&lHaraket edemezsin."
+  main-title: "&4&l{grapper} &r&4By Grapped."
+  subtitle: "&c&lDont Move."
 
 #--------------- GodMode Settings ---------------#
 god-mode: true

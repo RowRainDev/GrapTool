@@ -1,5 +1,5 @@
 name: grapTool
-version: '1.2'
+version: '1.3'
 main: dev.rowdev.grapTool.GrapTool
 api-version: '1.21'
 authors: [ rowrain ]
@@ -7,15 +7,15 @@ website: https://rowdev.rf.gd
 
 commands:
   grap:
-    description: Grapple özelliğini aç/kapat
+    description: Enable/disable grapple feature
     usage: /grap <on|off|reload>
     permission: graptool.admin
-    permission-message: §cBu komutu kullanmak için yetkin yok!
+    permission-message: §cYou are not authorized to use this command!
 
 permissions:
   graptool-use:
-    description: Grapple özelliğini kullanma izni
+    description: Permission to use the grapple feature
     default: true
   graptool.admin:
-    description: Grapple ayar komutlarını kullanma izni (/grap)
+    description: Permission to use grapple settings commands (/grap)
     default: op
